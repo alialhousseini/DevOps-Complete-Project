@@ -29,3 +29,4 @@ httpie==3.2.1
 
 #added
 Flask-Cors
+flask_talisman
