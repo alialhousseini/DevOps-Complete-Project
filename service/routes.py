@@ -1,6 +1,5 @@
 """
 Account Service
-
 This microservice handles the lifecycle of Accounts
 """
 # pylint: disable=unused-import
@@ -36,6 +35,50 @@ def index():
 
 
 ######################################################################
+# LIST ALL ACCOUNTS
+######################################################################
+@app.route("/accounts", methods=["GET"])
+def list_accounts():
+    """Returns all of the Accounts"""
+    app.logger.info("Request for Account list")
+    accounts = []
+
+    # Process the query string if any
+    name = request.args.get("name")
+    if name:
+        accounts = Account.find_by_name(name)
+    else:
+        accounts = Account.all()
+
+    # Return as an array of dictionaries
+    results = [account.serialize() for account in accounts]
+
+    return make_response(jsonify(results), status.HTTP_200_OK)
+
+
+######################################################################
+# READ AN ACCOUNT
+######################################################################
+@app.route("/accounts/<int:account_id>", methods=["GET"])
+def get_accounts(account_id):
+    """
+    Retrieve a single Account
+    This endpoint will return an Account based on it's id
+    """
+    app.logger.info("Request for Account with id: %s", account_id)
+
+    # See if the account exists and abort if it doesn't
+    account = Account.find(account_id)
+    if not account:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Account with id '{account_id}' could not be found.",
+        )
+
+    return make_response(jsonify(account.serialize()), status.HTTP_200_OK)
+
+
+######################################################################
 # CREATE A NEW ACCOUNT
 ######################################################################
 @app.route("/accounts", methods=["POST"])
@@ -46,53 +89,19 @@ def create_accounts():
     """
     app.logger.info("Request to create an Account")
     check_content_type("application/json")
+
+    # Create the account
     account = Account()
     account.deserialize(request.get_json())
     account.create()
+
+    # Create a message to return
     message = account.serialize()
-    # Uncomment once get_accounts has been implemented
-    # location_url = url_for("get_accounts", account_id=account.id, _external=True)
-    location_url = "/"  # Remove once get_accounts has been implemented
+    location_url = url_for("get_accounts", account_id=account.id, _external=True)
+
     return make_response(
         jsonify(message), status.HTTP_201_CREATED, {"Location": location_url}
     )
-
-######################################################################
-# LIST ALL ACCOUNTS
-######################################################################
-
-######################################################################
-# LIST ALL ACCOUNTS
-######################################################################
-@app.route("/accounts", methods=["GET"])
-def list_accounts():
-    """
-    List all Accounts
-    This endpoint will list all Accounts
-    """
-    app.logger.info("Request to list Accounts")
-    accounts = Account.all()
-    account_list = [account.serialize() for account in accounts]
-    app.logger.info("Returning [%s] accounts", len(account_list))
-    return jsonify(account_list), status.HTTP_200_OK
-
-
-######################################################################
-# READ AN ACCOUNT
-######################################################################
-@app.route("/accounts/<int:account_id>", methods=["GET"])
-def get_accounts(account_id):
-    """
-    Reads an Account
-    This endpoint will read an Account based the account_id that is requested
-    """
-    app.logger.info("Request to read an Account with id: %s", account_id)
-
-    account = Account.find(account_id)
-    if not account:
-        abort(status.HTTP_404_NOT_FOUND, f"Account with id [{account_id}] could not be found.")
-    return account.serialize(), status.HTTP_200_OK
-
 
 
 ######################################################################
@@ -102,18 +111,24 @@ def get_accounts(account_id):
 def update_accounts(account_id):
     """
     Update an Account
-    This endpoint will update an Account based on the posted data
+    This endpoint will update an Account based the body that is posted
     """
-    app.logger.info("Request to update an Account with id: %s", account_id)
+    app.logger.info("Request to update account with id: %s", account_id)
+    check_content_type("application/json")
 
+    # See if the account exists and abort if it doesn't
     account = Account.find(account_id)
     if not account:
-        abort(status.HTTP_404_NOT_FOUND, f"Account with id [{account_id}] could not be found.")
+        abort(
+            status.HTTP_404_NOT_FOUND, f"Account with id '{account_id}' was not found."
+        )
 
+    # Update from the json in the body of the request
     account.deserialize(request.get_json())
+    account.id = account_id
     account.update()
 
-    return account.serialize(), status.HTTP_200_OK
+    return make_response(jsonify(account.serialize()), status.HTTP_200_OK)
 
 
 ######################################################################
@@ -123,16 +138,16 @@ def update_accounts(account_id):
 def delete_accounts(account_id):
     """
     Delete an Account
-    This endpoint will delete an Account based on the account_id that is requested
+    This endpoint will delete an Account based the id specified in the path
     """
-    app.logger.info("Request to delete an Account with id: %s", account_id)
+    app.logger.info("Request to delete account with id: %s", account_id)
 
+    # Retrieve the account to delete and delete it if it exists
     account = Account.find(account_id)
     if account:
         account.delete()
 
-    return "", status.HTTP_204_NO_CONTENT
-
+    return make_response("", status.HTTP_204_NO_CONTENT)
 
 
 ######################################################################
@@ -145,6 +160,11 @@ def check_content_type(media_type):
     content_type = request.headers.get("Content-Type")
     if content_type and content_type == media_type:
         return
+    app.logger.error("Invalid Content-Type: %s", content_type)
+    abort(
+        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        f"Content-Type must be {media_type}",
+    )
     app.logger.error("Invalid Content-Type: %s", content_type)
     abort(
         status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
